@@ -1,0 +1,41 @@
+# electron-builder configuration — Windows desktop distribution
+# Artifacts land in release/ (gitignored).
+appId: com.pans0ul.mermaid-visual-editor
+productName: Mermaid Visual Editor
+copyright: Copyright © 2026 pans0ul
+
+directories:
+  output: release
+  buildResources: electron-assets
+
+files:
+  - out/**/*
+  - electron/**/*
+  - electron-assets/icon.png
+  - package.json
+  - '!node_modules/**/*'
+
+asar: true
+compression: normal
+npmRebuild: false
+
+win:
+  target:
+    - nsis
+    - portable
+    - zip
+  icon: electron-assets/icon.png
+  artifactName: Mermaid-Visual-Editor-${version}-win-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Mermaid Visual Editor
+  deleteAppDataOnUninstall: false
+  artifactName: Mermaid-Visual-Editor-Setup-${version}.${ext}
+
+portable:
+  artifactName: Mermaid-Visual-Editor-Portable-${version}.${ext}

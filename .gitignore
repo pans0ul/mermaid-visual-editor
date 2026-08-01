@@ -9,6 +9,8 @@ out/
 # Production build
 build/
 dist/
+release/
+smoke-screenshot.png
 
 # Environment
 .env
