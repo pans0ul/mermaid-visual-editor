@@ -70,7 +70,14 @@ jobs:
           ls /usr/lib/wine/ | head -5 || true
         timeout-minutes: 15
       - name: Build Windows desktop artifacts
-        run: pnpm desktop:dist
+        run: |
+          pnpm desktop:dist 2>&1 | tee desktop-build.log
+          status=${PIPESTATUS[0]}
+          if [ $status -ne 0 ]; then
+            echo "::error::Desktop build failed (exit $status). Last 40 lines:"
+            tail -40 desktop-build.log | sed 's/^/::error::/'
+            exit $status
+          fi
         env:
           ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-cache
         timeout-minutes: 30
