@@ -43,7 +43,7 @@
     "desktop:start": "electron .",
     "desktop:smoke": "electron . --smoke",
     "desktop:pack": "electron-builder --win --dir",
-    "desktop:dist": "electron-builder --win"
+    "desktop:dist": "electron-builder --win --publish never"
   },
   "dependencies": {
     "@dagrejs/dagre": "^2.0.4",
