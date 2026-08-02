@@ -61,12 +61,13 @@ jobs:
       # Windows desktop artifacts (electron-builder + wine)
       - name: Install wine (for Windows cross-build)
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends wine
-          # wine32 needed by electron-builder for NSIS/portable targets
+          set -x
           sudo dpkg --add-architecture i386
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends wine32:i386 || true
+          sudo apt-get install -y --no-install-recommends wine
+          sudo apt-get install -y --no-install-recommends wine32:i386
+          wine --version
+          ls /usr/lib/wine/ | head -5 || true
         timeout-minutes: 15
       - name: Build Windows desktop artifacts
         run: pnpm desktop:dist
