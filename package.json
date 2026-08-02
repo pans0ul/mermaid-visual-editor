@@ -1,6 +1,6 @@
 {
   "name": "mermaid-visual-editor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "description": "Visual drag-and-drop editor for Mermaid.js diagrams. Build flowcharts visually — export clean .mmd syntax.",
   "keywords": [
