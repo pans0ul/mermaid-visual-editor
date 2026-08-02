@@ -162,6 +162,14 @@ function createWindow() {
       console.error('[smoke] renderer gone:', JSON.stringify(details))
       app.exit(1)
     })
+    mainWindow.webContents.on('unhandled-rejection', (_event, reason) => {
+      console.error('[smoke] unhandled rejection:', reason instanceof Error ? reason.stack || reason.message : String(reason))
+    })
+    mainWindow.webContents.on('console-message', (event, levelOrDetails, maybeMessage) => {
+      const level = typeof levelOrDetails === 'object' ? levelOrDetails.level : levelOrDetails
+      const message = typeof levelOrDetails === 'object' ? levelOrDetails.message : maybeMessage
+      console.error(`[smoke] console[${level}]:`, message)
+    })
     mainWindow.webContents.once('did-finish-load', () => runSmoke(consoleErrors))
   }
 
@@ -170,33 +178,81 @@ function createWindow() {
 
 function runSmoke(consoleErrors) {
   const wc = mainWindow.webContents
-  // Give React time to hydrate and the first paint to settle.
-  setTimeout(async () => {
+  // Install an early global error trap in the page, then poll until React
+  // has hydrated and the flow canvas is mounted. Fixed sleeps are unreliable
+  // on slow cold starts (e.g. AppImage via FUSE), and executeJavaScript
+  // propagates page-level unhandled rejections as its own error.
+  wc.executeJavaScript(`
+    window.__smokeErrors = [];
+    window.addEventListener('unhandledrejection', (e) => {
+      const d = e && e.reason;
+      window.__smokeErrors.push('UNHANDLED: ' + (d && (d.stack || d.message) || String(d)));
+    });
+    window.addEventListener('error', (e) => {
+      window.__smokeErrors.push('ERROR: ' + (e.error && (e.error.stack || e.error.message) || e.message));
+    });
+    'trap-installed';
+  `).catch(() => {})
+
+  const start = Date.now()
+  let pollCount = 0
+  const poll = async () => {
+    pollCount++
     try {
-      const report = await wc.executeJavaScript(`(() => {
+      const ready = await wc.executeJavaScript(
+        `!!document.querySelector('.react-flow') && document.body.innerText.length > 0`
+      )
+      console.error(`[smoke] poll#${pollCount} ready=${ready} t=${Date.now() - start}ms`)
+      if (ready || Date.now() - start > 20000) {
+        return finishSmoke(consoleErrors)
+      }
+      setTimeout(poll, 500)
+    } catch (err) {
+      console.error(`[smoke] poll#${pollCount} error:`, err instanceof Error ? err.message : String(err))
+      setTimeout(poll, 500)
+    }
+  }
+  setTimeout(poll, 500)
+}
+
+async function finishSmoke(consoleErrors) {
+  const wc = mainWindow.webContents
+  try {
+    const report = await wc.executeJavaScript(`(() => {
+      try {
         const body = document.body ? document.body.innerText : ''
         return {
           title: document.title,
           flowCanvasMounted: !!document.querySelector('.react-flow'),
           toolbarButtons: document.querySelectorAll('button').length,
           bodyLength: body.length,
+          pageErrors: (window.mve && window.mve.smokeErrors ? window.mve.smokeErrors() : []),
+          scriptError: null,
         }
-      })()`)
-      const img = await wc.capturePage()
+      } catch (e) {
+        return { scriptError: String(e && e.stack || e) }
+      }
+    })()`)
+    const img = await wc.capturePage().catch(() => null)
+    if (img) {
       const shotPath = path.join(process.cwd(), 'smoke-screenshot.png')
       fs.writeFileSync(shotPath, img.toPNG())
       console.log('[smoke] screenshot:', shotPath)
-      console.log('[smoke] page:', JSON.stringify(report))
-      const fatal = consoleErrors.filter((m) => !/favicon/i.test(m))
-      if (fatal.length) console.log('[smoke] console errors:', JSON.stringify(fatal, null, 2))
-      const ok = report.flowCanvasMounted && report.bodyLength > 0 && fatal.length === 0
-      console.log(ok ? '[smoke] PASS' : '[smoke] FAIL')
-      app.exit(ok ? 0 : 1)
-    } catch (err) {
-      console.error('[smoke] error:', err)
-      app.exit(1)
+    } else {
+      console.log('[smoke] screenshot: skipped (GPU/viz unavailable in this environment)')
     }
-  }, 4000)
+    console.log('[smoke] page:', JSON.stringify(report))
+    const fatal = consoleErrors.filter((m) => !/favicon/i.test(m))
+    if (fatal.length) console.log('[smoke] console errors:', JSON.stringify(fatal, null, 2))
+    const pageErrs = (report.pageErrors || []).filter((m) => !/favicon/i.test(m))
+    if (pageErrs.length) console.log('[smoke] page errors:', JSON.stringify(pageErrs, null, 2))
+    const ok = report.flowCanvasMounted && report.bodyLength > 0 && fatal.length === 0 && pageErrs.length === 0
+    console.log(ok ? '[smoke] PASS' : '[smoke] FAIL')
+    app.exit(ok ? 0 : 1)
+  } catch (err) {
+    console.error('[smoke] error:', err instanceof Error ? err.stack || err.message : String(err))
+    app.exit(1)
+  }
 }
 
 app.whenReady().then(() => {

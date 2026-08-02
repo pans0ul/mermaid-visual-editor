@@ -1,4 +1,4 @@
-# electron-builder configuration — Windows desktop distribution
+# electron-builder configuration — Windows / Linux / macOS desktop distribution
 # Artifacts land in release/ (gitignored).
 appId: com.pans0ul.mermaid-visual-editor
 productName: Mermaid Visual Editor
@@ -19,6 +19,7 @@ asar: true
 compression: normal
 npmRebuild: false
 
+# ----------------------------- Windows -----------------------------
 win:
   target:
     - nsis
@@ -39,3 +40,35 @@ nsis:
 
 portable:
   artifactName: Mermaid-Visual-Editor-Portable-${version}.${ext}
+
+# ------------------------------ macOS ------------------------------
+mac:
+  target:
+    - dmg
+    - zip
+  icon: electron-assets/icon.png
+  category: public.app-category.developer-tools
+  artifactName: Mermaid-Visual-Editor-${version}-mac-${arch}.${ext}
+  # No signing identity on CI — build unsigned (ad-hoc) artifacts.
+  identity: null
+
+dmg:
+  artifactName: Mermaid-Visual-Editor-${version}-mac-${arch}.${ext}
+
+# ------------------------------ Linux ------------------------------
+linux:
+  target:
+    - AppImage
+    - deb
+    - tar.gz
+  icon: electron-assets/icon.png
+  category: Development
+  maintainer: pans0ul <pans0ul@163.com>
+  synopsis: Visual drag-and-drop editor for Mermaid.js diagrams
+  artifactName: Mermaid-Visual-Editor-${version}-linux-${arch}.${ext}
+
+appImage:
+  artifactName: Mermaid-Visual-Editor-${version}-linux-${arch}.${ext}
+
+deb:
+  artifactName: Mermaid-Visual-Editor-${version}-linux-${arch}.${ext}

@@ -28,15 +28,24 @@ Both commands serve the app and open your browser at [http://localhost:3000](htt
 
 **Requirements:** Node.js 18+
 
-### Windows Desktop App
+### Desktop Apps
 
-A Windows desktop version is available. Download the latest installer from the [Releases](https://github.com/pans0ul/mermaid-visual-editor/releases) page:
+Desktop versions for **Windows, macOS and Linux** are available. Download the latest build from the [Releases](https://github.com/pans0ul/mermaid-visual-editor/releases) page:
 
+**Windows**
 - `Mermaid-Visual-Editor-Setup-<version>.exe` — NSIS installer (with desktop shortcut)
 - `Mermaid-Visual-Editor-Portable-<version>.exe` — portable, no install needed
 - `Mermaid-Visual-Editor-<version>-win-x64.zip` — plain zip
 
-The desktop app runs fully offline — no Node.js required. It serves the same static bundle locally over `http://127.0.0.1`.
+**macOS**
+- `Mermaid-Visual-Editor-<version>-mac-arm64.dmg` — Apple Silicon (M1/M2/M3/M4)
+- `Mermaid-Visual-Editor-<version>-mac-x64.dmg` — Intel Macs
+
+**Linux**
+- `Mermaid-Visual-Editor-<version>-linux-x86_64.AppImage` — `chmod +x` then run, no install needed
+- `Mermaid-Visual-Editor-<version>-linux-amd64.deb` — Debian/Ubuntu package
+
+The desktop apps run fully offline — no Node.js required. They serve the same static bundle locally over `http://127.0.0.1`.
 
 ### Development Setup
 
