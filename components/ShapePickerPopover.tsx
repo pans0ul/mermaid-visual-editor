@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useFlowStore, type NodeShape } from '@/lib/store'
 import { ShapeIcon, ALL_SHAPES } from '@/components/ShapeIcons'
@@ -13,6 +13,7 @@ const NEU_BG = 'var(--neu-bg)'
 
 export function ShapePickerPopover({ onClose }: ShapePickerPopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
+  const [search, setSearch] = useState('')
 
   const { drawingShape, setDrawingShape, updateNodeShape } = useFlowStore(
     useShallow((s) => ({
@@ -54,6 +55,14 @@ export function ShapePickerPopover({ onClose }: ShapePickerPopoverProps) {
 
   const rows = [ALL_SHAPES.slice(0, 7), ALL_SHAPES.slice(7)]
 
+  const filtered = search.trim()
+    ? ALL_SHAPES.filter((s) => s.label.toLowerCase().includes(search.toLowerCase()))
+    : ALL_SHAPES
+
+  const displayRows = search.trim()
+    ? [filtered]
+    : rows
+
   return (
     <div
       ref={ref}
@@ -70,11 +79,31 @@ export function ShapePickerPopover({ onClose }: ShapePickerPopoverProps) {
         minWidth: 320,
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', letterSpacing: '0.08em', marginBottom: 10, textTransform: 'uppercase' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.08em', marginBottom: 8, textTransform: 'uppercase' }}>
         {hasNodeSelection ? 'Change Shape' : 'Draw Shape'}
       </div>
-      {rows.map((row, ri) => (
-        <div key={ri} style={{ display: 'flex', gap: 6, marginBottom: ri === 0 ? 6 : 0 }}>
+
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search shapes…"
+        autoFocus
+        style={{
+          width: '100%',
+          background: NEU_BG,
+          boxShadow: 'var(--neu-shadow-concave)',
+          border: 'none',
+          borderRadius: 10,
+          padding: '6px 10px',
+          fontSize: 12,
+          color: 'var(--text-primary)',
+          outline: 'none',
+          marginBottom: 10,
+        }}
+      />
+
+      {displayRows.map((row, ri) => (
+        <div key={ri} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: ri === 0 && displayRows.length > 1 ? 6 : 0 }}>
           {row.map(({ shape, label }) => {
             const isActive = hasNodeSelection
               ? selectedNodes.every((n) => n.data.shape === shape)

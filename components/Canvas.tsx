@@ -4,6 +4,7 @@ import {
   ReactFlow,
   Background,
   BackgroundVariant,
+  MiniMap,
   useReactFlow,
   type Node,
 } from '@xyflow/react'
@@ -17,6 +18,117 @@ import { FlowEdge } from './EdgeTypes/FlowEdge'
 const nodeTypes = { flowNode: FlowNode }
 const edgeTypes = { flowEdge: FlowEdge }
 
+const NEU_BG = 'var(--neu-bg)'
+
+function ContextMenu({ x, y, onClose }: { x: number; y: number; onClose: () => void }) {
+  const { addNode, addSubgraph, copySelected, pasteClipboard, duplicateSelected, toggleLock, bringToFront, sendToBack } = useFlowStore()
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: globalThis.MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as globalThis.Node)) onClose()
+    }
+    const keyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('mousedown', handler)
+    window.addEventListener('keydown', keyHandler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      window.removeEventListener('keydown', keyHandler)
+    }
+  }, [onClose])
+
+  const items: { label: string; shortcut?: string; action: () => void }[] = [
+    { label: 'Add Node', shortcut: 'N', action: () => { addNode(); onClose() } },
+    { label: 'Add Group', action: () => { addSubgraph(); onClose() } },
+    { label: '---', action: () => {} },
+    { label: 'Copy', shortcut: 'Ctrl+C', action: () => { copySelected(); onClose() } },
+    { label: 'Paste', shortcut: 'Ctrl+V', action: () => { pasteClipboard(); onClose() } },
+    { label: 'Duplicate', shortcut: 'Ctrl+D', action: () => { duplicateSelected(); onClose() } },
+    { label: '---', action: () => {} },
+    { label: 'Lock / Unlock', action: () => {
+      const sel = useFlowStore.getState().nodes.filter((n) => n.selected)
+      if (sel.length > 0) toggleLock(sel.map((n) => n.id))
+      onClose()
+    }},
+    { label: 'Bring to Front', action: () => {
+      const sel = useFlowStore.getState().nodes.filter((n) => n.selected)
+      if (sel.length > 0) bringToFront(sel.map((n) => n.id))
+      onClose()
+    }},
+    { label: 'Send to Back', action: () => {
+      const sel = useFlowStore.getState().nodes.filter((n) => n.selected)
+      if (sel.length > 0) sendToBack(sel.map((n) => n.id))
+      onClose()
+    }},
+    { label: '---', action: () => {} },
+    { label: 'Delete', shortcut: 'Del', action: () => {
+      const { nodes, edges, onNodesChange } = useFlowStore.getState()
+      const selIds = new Set(nodes.filter((n) => n.selected).map((n) => n.id))
+      const selEdges = edges.filter((e) => e.selected).map((e) => e.id)
+      const changes = [
+        ...nodes.filter((n) => selIds.has(n.id)).map((n) => ({ type: 'remove' as const, id: n.id })),
+        ...selEdges.map((id) => ({ type: 'remove' as const, id })),
+      ]
+      if (changes.length > 0) onNodesChange(changes)
+      onClose()
+    }},
+  ]
+
+  const style: React.CSSProperties = {
+    position: 'fixed',
+    left: x,
+    top: y,
+    background: NEU_BG,
+    borderRadius: 14,
+    boxShadow: 'var(--neu-shadow-raised)',
+    padding: 8,
+    zIndex: 100,
+    minWidth: 180,
+    color: 'var(--text-primary)',
+    fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+  }
+
+  const itemStyle = (separator: boolean): React.CSSProperties => ({
+    width: '100%',
+    border: 'none',
+    background: 'transparent',
+    cursor: separator ? 'default' : 'pointer',
+    padding: separator ? '4px 0' : '6px 12px',
+    fontSize: 12,
+    color: separator ? 'transparent' : 'var(--text-primary)',
+    display: separator ? 'block' : 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderRadius: separator ? 0 : 8,
+    borderBottom: separator ? '1px solid rgba(163,177,198,0.3)' : 'none',
+    marginBottom: separator ? 4 : 0,
+    marginTop: separator ? 4 : 0,
+  })
+
+  return (
+    <div ref={menuRef} style={style}>
+      {items.map((item, i) =>
+        item.label === '---' ? (
+          <div key={i} style={itemStyle(true)} />
+        ) : (
+          <button
+            key={i}
+            onClick={item.action}
+            style={itemStyle(false)}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(79,70,229,0.08)' }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent' }}
+          >
+            <span>{item.label}</span>
+            {item.shortcut && (
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{item.shortcut}</span>
+            )}
+          </button>
+        )
+      )}
+    </div>
+  )
+}
+
 interface CanvasInnerProps {
   onOpenPalette?: () => void
 }
@@ -29,29 +141,51 @@ function CanvasInner({ onOpenPalette }: CanvasInnerProps) {
     undo, redo, duplicateSelected, copySelected, pasteClipboard,
     pushHistory, assignToSubgraph,
     drawingShape, setDrawingShape,
+    showMinimap, snapToGrid, snapGrid,
+    bgVariant, bgGap, bgColor, bgSize,
   } = useFlowStore()
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, fitView, getNodes } = useReactFlow()
 
-  // ── Draw-mode state ─────────────────────────────────────────────────────────
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null)
   const [dragCurrent, setDragCurrent] = useState<{ x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
-  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  const handleEdgeClick = useCallback(
+    (_event: React.MouseEvent, edge: { id: string }) => {
+      if (_event.shiftKey) {
+        const pos = screenToFlowPosition({ x: _event.clientX, y: _event.clientY })
+        const store = useFlowStore.getState()
+        const updated = store.edges.map((e) => {
+          if (e.id !== edge.id) return e
+          const wp = (e.data as { waypoints?: { x: number; y: number }[] } | undefined)?.waypoints ?? []
+          return { ...e, data: { ...e.data, waypoints: [...wp, pos] } }
+        })
+        store.onEdgesChange(updated.map((e) => ({ type: 'replace' as const, id: e.id, item: e })))
+      }
+    },
+    [screenToFlowPosition]
+  )
+
+  const variantMap: Record<string, BackgroundVariant> = {
+    dots: BackgroundVariant.Dots,
+    lines: BackgroundVariant.Lines,
+    cross: BackgroundVariant.Cross,
+  }
+
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
       const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
 
-      // Escape → cancel draw mode
       if (e.key === 'Escape') {
         setDrawingShape(null)
         setDragStart(null)
         setDragCurrent(null)
+        setContextMenu(null)
         return
       }
 
-      // N → add node (when not typing)
       if (!isTyping && (e.key === 'n' || e.key === 'N')) {
         addNode()
         return
@@ -59,53 +193,64 @@ function CanvasInner({ onOpenPalette }: CanvasInnerProps) {
 
       const ctrl = e.ctrlKey || e.metaKey
 
-      // Ctrl+Z → undo
       if (ctrl && !e.shiftKey && e.key === 'z') {
         e.preventDefault()
         undo()
         return
       }
 
-      // Ctrl+Shift+Z or Ctrl+Y → redo
       if ((ctrl && e.shiftKey && e.key === 'z') || (ctrl && e.key === 'y')) {
         e.preventDefault()
         redo()
         return
       }
 
-      // Ctrl+D → duplicate selected
       if (ctrl && e.key === 'd') {
         e.preventDefault()
         duplicateSelected()
         return
       }
 
-      // Ctrl+C → copy selected
       if (ctrl && !e.shiftKey && e.key === 'c') {
         e.preventDefault()
         copySelected()
         return
       }
 
-      // Ctrl+V → paste clipboard
       if (ctrl && !e.shiftKey && e.key === 'v') {
         e.preventDefault()
         pasteClipboard()
         return
       }
 
-      // Ctrl+K / Meta+K → open command palette
       if (ctrl && e.key === 'k') {
         e.preventDefault()
         onOpenPalette?.()
         return
       }
+
+      if (ctrl && e.key === 'a') {
+        e.preventDefault()
+        const allNodes = getNodes()
+        useFlowStore.getState().onNodesChange(
+          allNodes.map((n) => ({ type: 'select' as const, id: n.id, selected: true }))
+        )
+        return
+      }
+
+      if (ctrl && e.shiftKey && e.key === 'F') {
+        e.preventDefault()
+        const selected = getNodes().filter((n) => n.selected)
+        if (selected.length > 0) {
+          fitView({ nodes: selected, duration: 400, padding: 0.2 })
+        }
+        return
+      }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [addNode, undo, redo, duplicateSelected, copySelected, pasteClipboard, setDrawingShape, onOpenPalette])
+  }, [addNode, undo, redo, duplicateSelected, copySelected, pasteClipboard, setDrawingShape, onOpenPalette, fitView, getNodes])
 
-  // ── Double-click on blank canvas → add node at cursor ─────────────────────
   const handleDoubleClick = (e: MouseEvent) => {
     if (drawingShape) return
     const target = e.target as Element
@@ -117,9 +262,24 @@ function CanvasInner({ onOpenPalette }: CanvasInnerProps) {
     addNodeAtPosition(position)
   }
 
-  // ── Draw-mode mouse handlers ────────────────────────────────────────────────
+  const handleContextMenu = (e: MouseEvent) => {
+    e.preventDefault()
+    const target = e.target as Element
+    const nodeEl = target.closest('.react-flow__node') as HTMLElement | null
+    if (nodeEl) {
+      const nodeId = nodeEl.getAttribute('data-id')
+      if (nodeId) {
+        useFlowStore.getState().onNodesChange(
+          useFlowStore.getState().nodes.map((n) => ({ type: 'select' as const, id: n.id, selected: n.id === nodeId }))
+        )
+      }
+    }
+    setContextMenu({ x: e.clientX, y: e.clientY })
+  }
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      setContextMenu(null)
       if (!drawingShape) return
       const target = e.target as Element
       if (target.closest('.react-flow__node')) return
@@ -152,7 +312,6 @@ function CanvasInner({ onOpenPalette }: CanvasInnerProps) {
       const flowEnd = screenToFlowPosition({ x: end.x, y: end.y })
 
       if (dx < 20 && dy < 20) {
-        // Single click — create default-sized node
         addNodeAtPosition(flowStart, drawingShape)
       } else {
         const x = Math.min(flowStart.x, flowEnd.x)
@@ -169,13 +328,11 @@ function CanvasInner({ onOpenPalette }: CanvasInnerProps) {
     [dragStart, drawingShape, screenToFlowPosition, addNodeAtPosition, setDrawingShape],
   )
 
-  // ── Push history after drag ends; auto-assign/unassign group membership ─────
   const handleNodeDragStop = useCallback(
     (_event: MouseEvent, draggedNode: Node<FlowNodeData>) => {
       pushHistory()
       const allNodes = useFlowStore.getState().nodes
 
-      // Group dragged onto free nodes — auto-assign nodes now inside it
       if (draggedNode.data.isSubgraph) {
         const sgW = typeof draggedNode.style?.width === 'number' ? draggedNode.style.width : 320
         const sgH = typeof draggedNode.style?.height === 'number' ? draggedNode.style.height : 220
@@ -197,7 +354,6 @@ function CanvasInner({ onOpenPalette }: CanvasInnerProps) {
       const w = draggedNode.measured?.width ?? 150
       const h = draggedNode.measured?.height ?? 60
 
-      // Node already in a group — check if it was dragged outside
       if (draggedNode.parentId) {
         const parent = allNodes.find((n) => n.id === draggedNode.parentId)
         if (parent) {
@@ -212,7 +368,6 @@ function CanvasInner({ onOpenPalette }: CanvasInnerProps) {
         return
       }
 
-      // Free node — check if dropped inside a group
       const subgraphs = allNodes.filter((n) => n.data.isSubgraph)
       if (subgraphs.length === 0) return
       const cx = draggedNode.position.x + w / 2
@@ -260,6 +415,7 @@ function CanvasInner({ onOpenPalette }: CanvasInnerProps) {
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onContextMenu={handleContextMenu}
     >
       <ReactFlow
         nodes={nodes}
@@ -270,15 +426,20 @@ function CanvasInner({ onOpenPalette }: CanvasInnerProps) {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeDragStop={handleNodeDragStop}
+        isValidConnection={(c) => c.source !== c.target}
         fitView
         deleteKeyCode={['Backspace', 'Delete']}
         panOnDrag={drawingShape ? false : [1, 2]}
         selectionOnDrag={!drawingShape}
         multiSelectionKeyCode={['Shift', 'Control']}
         nodesDraggable={!drawingShape}
-        style={{ background: 'var(--neu-bg)' }}
+        snapToGrid={snapToGrid}
+        snapGrid={snapGrid}
+        onEdgeClick={handleEdgeClick}
+        style={{ background: NEU_BG }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={2} color="#d1d9e6" />
+        <Background variant={variantMap[bgVariant] ?? BackgroundVariant.Dots} gap={bgGap} size={bgSize} color={bgColor} />
+        {showMinimap && <MiniMap position="bottom-right" pannable zoomable style={{ background: NEU_BG, borderRadius: 12, boxShadow: 'var(--neu-shadow-raised)', border: 'none' }} />}
       </ReactFlow>
 
       {relativePreview && relativePreview.width > 4 && relativePreview.height > 4 && (
@@ -290,15 +451,19 @@ function CanvasInner({ onOpenPalette }: CanvasInnerProps) {
 
       {nodes.length === 0 && !drawingShape && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center text-gray-400">
-            <p className="text-lg font-medium">Canvas is empty</p>
-            <p className="text-sm mt-1">
+          <div className="text-center" style={{ color: 'var(--text-muted)' }}>
+            <p style={{ fontSize: 18, fontWeight: 500, marginBottom: 4 }}>Canvas is empty</p>
+            <p style={{ fontSize: 14 }}>
                 Select a shape above and drag to draw, double-click canvas, or press{' '}
-              <kbd className="px-1 py-0.5 rounded bg-gray-100 text-gray-500 text-xs font-mono">N</kbd>{' '}
-              to add a node. Drag on empty canvas to select multiple nodes.
+              <kbd style={{ padding: '1px 4px', borderRadius: 4, background: 'var(--text-muted)', color: NEU_BG, fontSize: 12, fontFamily: 'monospace' }}>N</kbd>{' '}
+              to add a node. Right-click for more options.
             </p>
           </div>
         </div>
+      )}
+
+      {contextMenu && (
+        <ContextMenu x={contextMenu.x} y={contextMenu.y} onClose={() => setContextMenu(null)} />
       )}
     </div>
   )

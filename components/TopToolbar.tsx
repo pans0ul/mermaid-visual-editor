@@ -8,6 +8,7 @@ import { useFlowStore } from '@/lib/store'
 import { ShapePickerPopover } from '@/components/ShapePickerPopover'
 import { SettingsPopover } from '@/components/SettingsPopover'
 import { ImportModal } from '@/components/ImportModal'
+import { copyToClipboard } from '@/lib/fileio'
 
 interface TopToolbarProps {
   inspectorOpen: boolean
@@ -110,10 +111,12 @@ export function TopToolbar({ inspectorOpen, onToggleInspector, onOpenPalette, sy
   const [importOpen, setImportOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  const { setDrawingShape, addSubgraph } = useFlowStore(
+  const { setDrawingShape, addSubgraph, editorTheme, toggleTheme } = useFlowStore(
     useShallow((s) => ({
       setDrawingShape: s.setDrawingShape,
       addSubgraph: s.addSubgraph,
+      editorTheme: s.editorTheme,
+      toggleTheme: s.toggleTheme,
     }))
   )
 
@@ -122,7 +125,7 @@ export function TopToolbar({ inspectorOpen, onToggleInspector, onOpenPalette, sy
   const settingsRef = useRef<HTMLDivElement>(null)
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(syntax)
+    await copyToClipboard(syntax)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -196,6 +199,11 @@ export function TopToolbar({ inspectorOpen, onToggleInspector, onOpenPalette, sy
             </NeuIconBtn>
           </>
         )}
+
+        {/* Dark mode toggle */}
+        <NeuIconBtn onClick={toggleTheme} title={editorTheme === 'light' ? 'Dark mode' : 'Light mode'}>
+          {editorTheme === 'light' ? '◑' : '◐'}
+        </NeuIconBtn>
 
         {/* Settings */}
         <div ref={settingsRef} style={{ position: 'relative' }}>

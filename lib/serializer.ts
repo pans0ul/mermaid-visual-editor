@@ -18,7 +18,7 @@ function sanitizeId(id: string): string {
 }
 
 function escapeLabel(label: string): string {
-  return label.replace(/"/g, "'")
+  return label.replace(/"/g, "'").replace(/\n/g, '<br/>')
 }
 
 const SHAPE_TEMPLATES: Record<NodeShape, [string, string]> = {

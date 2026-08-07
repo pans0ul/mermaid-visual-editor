@@ -2,6 +2,21 @@ import type { Edge, Node } from '@xyflow/react'
 import type { FlowEdgeData, FlowNodeData } from './store.ts'
 import { serialize, type SerializeOptions } from './serializer.ts'
 
+export async function copyToClipboard(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+  }
+}
+
 /** Trigger a browser file download with given content */
 function download(filename: string, content: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType })

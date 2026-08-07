@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import mermaid from 'mermaid'
+import { copyToClipboard } from '@/lib/fileio'
 
 let initialized = false
 let renderId = 0
@@ -54,7 +55,7 @@ function ExpandModal({ syntax, onClose }: { syntax: string; onClose: () => void 
   }, [onClose])
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(syntax)
+    await copyToClipboard(syntax)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -177,7 +178,7 @@ export function MermaidLiveSection({ syntax }: MermaidLiveSectionProps) {
   }, [])
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(syntax)
+    await copyToClipboard(syntax)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }

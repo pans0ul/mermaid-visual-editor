@@ -262,12 +262,18 @@ function NodeLabel({
       />
     )
   }
+  const lines = value.split('\n')
   return (
     <span
       className="text-center break-words text-sm font-medium leading-snug select-none"
       style={{ color: color || '#1f2937' }}
     >
-      {value}
+      {lines.map((line, i) => (
+        <span key={i}>
+          {line}
+          {i < lines.length - 1 && <br />}
+        </span>
+      ))}
     </span>
   )
 }
@@ -288,7 +294,8 @@ export function FlowNode({ id, data, selected }: NodeProps) {
     setEditing(false)
   }, [draft, id, updateNodeLabel])
 
-  const handleDoubleClick = useCallback(() => {
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
     setDraft(nodeData.label)
     setEditing(true)
     setTimeout(() => inputRef.current?.select(), 0)
@@ -335,6 +342,11 @@ export function FlowNode({ id, data, selected }: NodeProps) {
         <div className={`absolute top-2 left-3 text-xs font-semibold text-gray-500 ${editing ? '' : 'select-none pointer-events-none'}`}>
           <NodeLabel {...labelProps} color={textColor} />
         </div>
+        {nodeData.locked && (
+          <div style={{ position: 'absolute', top: 4, right: 8, fontSize: 10, opacity: 0.6, pointerEvents: 'none' }}>
+            🔒
+          </div>
+        )}
         <NodeHandles />
       </div>
     )
@@ -376,6 +388,11 @@ export function FlowNode({ id, data, selected }: NodeProps) {
         >
           <NodeLabel {...labelProps} />
         </div>
+        {nodeData.locked && (
+          <div style={{ position: 'absolute', top: 4, right: 8, fontSize: 10, opacity: 0.6, zIndex: 20, pointerEvents: 'none' }}>
+            🔒
+          </div>
+        )}
         <NodeHandles />
       </div>
     )
@@ -437,6 +454,11 @@ export function FlowNode({ id, data, selected }: NodeProps) {
       />
       <NodeHandles />
       <NodeLabel {...labelProps} />
+      {nodeData.locked && (
+        <div style={{ position: 'absolute', top: 2, right: 6, fontSize: 10, opacity: 0.6, pointerEvents: 'none' }}>
+          🔒
+        </div>
+      )}
     </div>
   )
 }
