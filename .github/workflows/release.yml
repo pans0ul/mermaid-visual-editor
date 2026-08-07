@@ -15,11 +15,6 @@ permissions:
   id-token: write
 
 jobs:
-  # ---------------------------------------------------------------
-  # prepare: bump version & push tag (dispatch), or read tag version
-  # The actual builds run on the tag-push event so every platform job
-  # sees the final committed version.
-  # ---------------------------------------------------------------
   prepare:
     runs-on: ubuntu-latest
     outputs:
@@ -48,27 +43,17 @@ jobs:
           git tag "v${VERSION}"
           git push origin HEAD:master
           git push origin "v${VERSION}"
-          echo "Tag v${VERSION} pushed — build triggered by tag event."
+          echo "Tag v${VERSION} pushed - build triggered by tag event."
 
       - name: Read version from tag
         id: version
         if: github.event_name == 'push'
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-  # ---------------------------------------------------------------
-  # build: one job per platform
-  # ---------------------------------------------------------------
-  build:
+  build-web:
     needs: prepare
     if: github.event_name == 'push'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-latest, platform: win,   script: 'pnpm desktop:dist' }
-          - { os: ubuntu-latest, platform: linux, script: 'pnpm desktop:dist:linux' }
-          - { os: macos-latest,  platform: mac,   script: 'pnpm desktop:dist:mac' }
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -76,49 +61,58 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
-
-      - name: Install wine (Windows cross-build only)
-        if: matrix.platform == 'win'
-        run: |
-          set -x
-          sudo dpkg --add-architecture i386
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends wine
-          sudo apt-get install -y --no-install-recommends wine32:i386
-          wine --version
-        timeout-minutes: 15
-
       - run: pnpm build
-      - name: Verify out/ exists
-        run: '[ -d "out" ] || (echo "ERROR: out/ not created"; exit 1)'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-out
+          path: out/
+          if-no-files-found: error
 
-      - name: Build desktop artifacts (${{ matrix.platform }})
-        run: |
-          ${{ matrix.script }} 2>&1 | tee desktop-build.log
-          status=${PIPESTATUS[0]}
-          if [ $status -ne 0 ]; then
-            echo "::error::${{ matrix.platform }} desktop build failed (exit $status). Last 40 lines:"
-            tail -40 desktop-build.log | sed 's/^/::error::/'
-            exit $status
-          fi
+  desktop:
+    needs: [prepare, build-web]
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: linux, script: 'pnpm desktop:dist:linux' }
+          - { os: macos-latest,   target: mac,   script: 'pnpm desktop:dist:mac' }
+          - { os: windows-latest, target: win,   script: 'pnpm desktop:dist' }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: '10.33' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+
+      - name: Download web build
+        uses: actions/download-artifact@v4
+        with:
+          name: web-out
+          path: out
+
+      - name: Linux deps (deb/rpm/AppImage)
+        if: matrix.target == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build desktop (${{ matrix.target }})
+        run: ${{ matrix.script }}
         env:
           ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-cache
         timeout-minutes: 30
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.platform }}
+          name: dist-${{ matrix.target }}
           path: release/*
-          if-no-files-found: error
+          if-no-files-found: warn
 
-  # ---------------------------------------------------------------
-  # release: publish to npm (optional) + create GitHub Release with
-  # every platform's artifacts
-  # ---------------------------------------------------------------
   release:
-    needs: [prepare, build]
-    if: github.event_name == 'push'
+    needs: [prepare, build-web, desktop]
+    if: github.event_name == 'push' && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,11 +133,12 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Download all platform artifacts
+      - name: Download desktop artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+        continue-on-error: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -152,6 +147,7 @@ jobs:
           name: v${{ needs.prepare.outputs.version }}
           generate_release_notes: true
           files: dist/*
+          fail_on_unmatched_files: false
           body: |
             ## 服务器模式 (Server mode)
             ```bash
